@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import plotly.graph_objects as go
+import plotly.graph_objects as go # type: ignore
 from sklearn.linear_model import LinearRegression
 import numpy as np
 from datetime import timedelta
@@ -83,12 +83,12 @@ if period and interval:
         prev_close = data["Close"].iloc[-2] if len(data) > 1 else last_close
         change = last_close - prev_close
         change_pct = (change / prev_close) * 100 if prev_close != 0 else 0
-        arrow = "⬆️" if change > 0 else "⬇️"
+        arrow = "↑" if change > 0 else "↓"
         color = "green" if change > 0 else "red"
 
         st.sidebar.markdown(f"""
-            <div style="background-color: black; padding: 10px; border-radius: 10px; text-align: center;">
-                <span style="color: {color}; font-size: 18px; font-weight: bold;">{arrow} {stock_symbol} Price</span><br>
+            <div style="background-color: transparent; padding: 10px; border-radius: 10px; text-align: center;">
+                <span style="color: {color}; font-size: 18px; font-weight: bold;">{arrow} {stock_symbol}</span><br>
                 <span style="font-size: 22px; color: white;">${last_close:.2f}</span><br>
                 <span style="color: {color};">{change:.2f} ({change_pct:.2f}%)</span>
             </div>
@@ -115,6 +115,7 @@ if period and interval:
 
         # Create a new DataFrame with more detailed prediction information
         prediction_dates = pd.date_range(start=data.index[-1] + timedelta(days=1), periods=5, freq='D')
+        
         prediction_df = pd.DataFrame({
             "Prediction Date": prediction_dates,
             "Days Ahead": [1, 2, 3, 4, 5],
@@ -123,11 +124,30 @@ if period and interval:
             "Price Change (%)": (future_prices - data["Close"].iloc[-1]) / data["Close"].iloc[-1] * 100
         })
 
-        # AI Buy/Hold/Sell Recommendation
-        if future_prices[-1] > data["Close"].iloc[-1]:
-            st.success(f"✅ AI Recommendation: **BUY** {stock_symbol}")
+        # Calculate additional metrics
+        prediction_df["Upper Bound (USD)"] = future_prices + (future_prices * 0.05)  # Example: 5% above prediction
+        prediction_df["Lower Bound (USD)"] = future_prices - (future_prices * 0.05)  # Example: 5% below prediction
+
+        # Simple Volatility Estimate (using historical data) - Could be improved with more sophisticated methods
+        historical_volatility = data["Close"].pct_change().std() * np.sqrt(252) # Annualized Volatility
+        prediction_df["Volatility (%)"] = historical_volatility * 100 # Add volatility to the prediction table
+
+
+        # AI Buy/Hold/Sell Recommendation (Improved)
+        last_close = data["Close"].iloc[-1]
+        predicted_change_pct = (future_prices[-1] - last_close) / last_close * 100
+
+        if predicted_change_pct > 5:  # Example threshold: 5% increase
+            st.success(f"✅ AI Recommendation: **Strong BUY** {stock_symbol} (Projected {predicted_change_pct:.2f}% increase)")
+        elif predicted_change_pct > 2: # Example threshold: 2% increase
+            st.info(f"✅ AI Recommendation: **BUY** {stock_symbol} (Projected {predicted_change_pct:.2f}% increase)")
+        elif predicted_change_pct < -5:  # Example threshold: 5% decrease
+            st.error(f"⚠️ AI Recommendation: **Strong SELL** {stock_symbol} (Projected {predicted_change_pct:.2f}% decrease)")
+        elif predicted_change_pct < -2: # Example threshold: 2% decrease
+            st.warning(f"⚠️ AI Recommendation: **SELL** {stock_symbol} (Projected {predicted_change_pct:.2f}% decrease)")
         else:
-            st.warning(f"⚠️ AI Recommendation: **HOLD/SELL** {stock_symbol}")
+            st.warning(f"⚠️ AI Recommendation: **HOLD** {stock_symbol} (Projected {predicted_change_pct:.2f}% change)")
+
 
         # Display the prediction DataFrame
         st.dataframe(prediction_df, use_container_width=True)
